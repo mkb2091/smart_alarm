@@ -1,6 +1,7 @@
 import logging
 import sched
 import time
+import json
 import re
 
 import uk_covid19
@@ -12,6 +13,9 @@ scheduler = sched.scheduler(time.time, time.sleep)
 
 alarms = []
 notifications = [{'title':'MyNotification', 'content':'MyNotificationContent'}]
+
+def get_news():
+    pass
 
 def handle_alarm():
     '''
@@ -26,6 +30,8 @@ def handle_alarm():
         except AssertionError:
             logging.warning('handle_alarm called when alarm is in the future. Alarm time: %s, current time: %s' % (alarm['time'], time.gmtime()))
         print(alarm)
+        if alarm['include_news']:
+            get_news()
     except IndexError:
         logging.warning('Called handle_alarm with an empty alarm list')
 
@@ -44,7 +50,9 @@ def register_alarm(alarm_time, name: str, include_news: bool, include_weather: b
                 + (['with weather'] if include_weather else [])
                 )
             ),
-        'time': alarm_time}
+        'time': alarm_time,
+        'include_news': include_news,
+        'include_weather': include_weather}
     if alarm not in alarms:
         alarms.append(alarm)
         alarms.sort(key=lambda a: a['time'])
@@ -136,5 +144,7 @@ if __name__ == '__main__':
                     cancel_alarm(cancel_match.group(1), log=False)
     except Exception as error:
         print(error)
+    with open('config.json') as file:
+        config = json.load(file)
     logging.basicConfig(filename='log.log', encoding='utf-8', level=logging.DEBUG)
     app.run()
