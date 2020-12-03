@@ -25,7 +25,7 @@ def handle_alarm():
         logging.warning('Called handle_alarm with an empty alarm list')
 
 
-def register_alarm(alarm_time, name, include_news, include_weather, log_alarm=True):
+def register_alarm(alarm_time, name, include_news, include_weather, log=True):
     alarm_time_str = time.strftime('%Y-%m-%d %H:%M', alarm_time)
     alarm = {
         'title': name,
@@ -41,11 +41,24 @@ def register_alarm(alarm_time, name, include_news, include_weather, log_alarm=Tr
         alarms.append(alarm)
         alarms.sort(key=lambda a: a['time'])
         scheduler.enterabs(time.mktime(alarm_time), 1, handle_alarm)
-        if log_alarm:
+        if log:
             logging.info(f'Registering an alarm: {name} on {alarm_time_str}, include news: {include_news}, '
                   f'include weather: {include_weather}')
 
-def add_alarm():
+def cancel_alarm(alarm_name, log=True):
+    location = None
+    for (i, alarm) in enumerate(alarms):
+        if alarm['title'] == alarm_name:
+            location = i
+            break
+    if location is not None:
+        del alarms[i]
+        if log:
+            logging.info(f'Canceling an alarm: {alarm_name}')
+    else:
+        logging.warning(f'Attempted to cancel an alarm that does not exist: {alarm_name}')
+
+def add_alarm_parser():
     alarm_time = flask.request.args.get('alarm')
     if alarm_time is not None:
         try:
@@ -58,11 +71,16 @@ def add_alarm():
         except ValueError:
             logging.warning('Invalid time format given: %s' % alarm_time)
 
+def cancel_alarm_parser():
+    alarm_name = flask.request.args.get('alarm_item')
+    if alarm_name is not None:
+        cancel_alarm(alarm_name)
 @app.route('/')
 @app.route('/index')
 @app.route('/index.html')
 def index():
-    add_alarm()
+    add_alarm_parser()
+    cancel_alarm_parser()
     scheduler.run(False)
     return flask.render_template(
         'index.html',
@@ -89,7 +107,13 @@ if __name__ == '__main__':
                     include_news = include_news == 'True'
                     include_weather = include_weather == 'True'
                     if alarm_time > time.gmtime():
-                        register_alarm(alarm_time, alarm_name, include_news, include_weather, log_alarm=False)
+                        register_alarm(alarm_time, alarm_name, include_news, include_weather, log=False)
+                cancel_match = re.match(
+                    r'INFO:\w+:Canceling an alarm: (\w+)',
+                    line
+                    )
+                if cancel_match:
+                    cancel_alarm(cancel_match.group(1), log=False)
     except Exception as error:
         print(error)
     logging.basicConfig(filename='log.log', encoding='utf-8', level=logging.DEBUG)
