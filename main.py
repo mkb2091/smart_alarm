@@ -3,6 +3,7 @@ import sched
 import time
 import re
 
+import uk_covid19
 import pyttsx3
 import flask
 
@@ -13,10 +14,14 @@ alarms = []
 notifications = [{'title':'MyNotification', 'content':'MyNotificationContent'}]
 
 def handle_alarm():
+    '''
+    Handles what happens when an alarm is triggered. Should be called by the scheduler
+    '''
     try:
         alarm = alarms.pop(0)
         try:
-            assert alarm['time'] <= time.gmtime() # Check that it is actually an event in the past
+            assert alarm['time'] <= time.gmtime()
+            # Check that it is actually an event in the past
             # Assert is used for the check so that it can be disabled by calling python3 -OO
         except AssertionError:
             logging.warning('handle_alarm called when alarm is in the future. Alarm time: %s, current time: %s' % (alarm['time'], time.gmtime()))
@@ -25,7 +30,10 @@ def handle_alarm():
         logging.warning('Called handle_alarm with an empty alarm list')
 
 
-def register_alarm(alarm_time, name, include_news, include_weather, log=True):
+def register_alarm(alarm_time, name: str, include_news: bool, include_weather: bool, log: bool=True):
+    '''
+    Creates the alarm
+    '''
     alarm_time_str = time.strftime('%Y-%m-%d %H:%M', alarm_time)
     alarm = {
         'title': name,
@@ -40,12 +48,17 @@ def register_alarm(alarm_time, name, include_news, include_weather, log=True):
     if alarm not in alarms:
         alarms.append(alarm)
         alarms.sort(key=lambda a: a['time'])
+        # Would me more efficient to insert alarm in correct position,
+        # but it is easier to append and then sort
         scheduler.enterabs(time.mktime(alarm_time), 1, handle_alarm)
         if log:
             logging.info(f'Registering an alarm: {name} on {alarm_time_str}, include news: {include_news}, '
                   f'include weather: {include_weather}')
 
-def cancel_alarm(alarm_name, log=True):
+def cancel_alarm(alarm_name: str, log=True):
+    '''
+    Removes the alarm of the specified name
+    '''
     location = None
     for (i, alarm) in enumerate(alarms):
         if alarm['title'] == alarm_name:
@@ -59,6 +72,9 @@ def cancel_alarm(alarm_name, log=True):
         logging.warning(f'Attempted to cancel an alarm that does not exist: {alarm_name}')
 
 def add_alarm_parser():
+    '''
+    Checks if the current request is a alarm creation request, and if it is, creates the alarm
+    '''
     alarm_time = flask.request.args.get('alarm')
     if alarm_time is not None:
         try:
@@ -72,9 +88,13 @@ def add_alarm_parser():
             logging.warning('Invalid time format given: %s' % alarm_time)
 
 def cancel_alarm_parser():
+    '''
+    Checks if the current request is a cancel alarm request, and if it is, it cancels the alarm
+    '''
     alarm_name = flask.request.args.get('alarm_item')
     if alarm_name is not None:
         cancel_alarm(alarm_name)
+
 @app.route('/')
 @app.route('/index')
 @app.route('/index.html')
