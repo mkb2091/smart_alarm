@@ -5,18 +5,36 @@ import json
 import re
 
 import uk_covid19
+import requests
 import pyttsx3
 import flask
 
 app = flask.Flask(__name__)
 scheduler = sched.scheduler(time.time, time.sleep)
+engine = pyttsx3.init()
+
 
 alarms = []
 notifications = [{'title':'MyNotification', 'content':'MyNotificationContent'}]
 
-def get_news():
-    pass
 
+def get_news_briefing(testing=False):
+    for value in ['newsapikey', 'news_briefing_keyword']:
+        if value not in config:
+            logging.warning('%s is missing from config' % value)
+            return ''
+    if testing:
+        articles = ['Example Article One', 'Example Article Two']
+    else:
+        r = requests.get('http://newsapi.org/v2/top-headlines?q=%s&apiKey=%s'
+                        % (config['news_briefing_keyword'], config['newsapikey']))
+        if r.status_code != 200:
+            logging.warning('Non 200 status code from NewsAPI: %s' % r.status_code)
+        data = r.json()
+        articles = [a['title'] for a in data['articles']]
+    return 'Found %s articles for keyword %s. %s' % (
+        len(articles), config['news_briefing_keyword'], '\n'.join(articles)
+        )
 def handle_alarm():
     '''
     Handles what happens when an alarm is triggered. Should be called by the scheduler
@@ -29,9 +47,11 @@ def handle_alarm():
             # Assert is used for the check so that it can be disabled by calling python3 -OO
         except AssertionError:
             logging.warning('handle_alarm called when alarm is in the future. Alarm time: %s, current time: %s' % (alarm['time'], time.gmtime()))
-        print(alarm)
+        to_say = 'Alarm %s completed. ' % alarm['title']
         if alarm['include_news']:
-            get_news()
+            to_say += get_news_briefing()
+        engine.say(to_say)
+        engine.runAndWait()
     except IndexError:
         logging.warning('Called handle_alarm with an empty alarm list')
 
