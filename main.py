@@ -18,6 +18,24 @@ alarms = []
 notifications = [{'title':'MyNotification', 'content':'MyNotificationContent'}]
 
 
+def get_news_notifications(reschedule=True):
+    for value in ['newsapikey', 'news_notification_keyword']:
+        if value not in config:
+            logging.warning('%s is missing from config' % value)
+            return ''
+    r = requests.get('http://newsapi.org/v2/everything?q=%s&from=%s&apiKey=%s'
+                    % (config['news_notification_keyword'],
+                       time.strftime('%Y-%m-%d', time.gmtime(time.time() - 86400)),
+                       config['newsapikey']))
+    if r.status_code != 200:
+        logging.warning('Non 200 status code from NewsAPI: %s' % r.status_code)
+    data = r.json()
+    global notifications
+    notifications = data['articles']
+    if reschedule:
+        scheduler.enter(3600, 1, get_news_notifications)
+    
+
 def get_news_briefing(testing=False):
     for value in ['newsapikey', 'news_briefing_keyword']:
         if value not in config:
@@ -77,7 +95,8 @@ def handle_alarm():
             # Check that it is actually an event in the past
             # Assert is used for the check so that it can be disabled by calling python3 -OO
         except AssertionError:
-            logging.warning('handle_alarm called when alarm is in the future. Alarm time: %s, current time: %s' % (alarm['time'], time.gmtime()))
+            logging.warning('handle_alarm called when alarm is in the future. '
+                            'Alarm time: %s, current time: %s' % (alarm['time'], time.gmtime()))
         to_say = 'Alarm %s completed. ' % alarm['title']
         if alarm['include_news']:
             to_say += get_news_briefing()
@@ -133,6 +152,23 @@ def cancel_alarm(alarm_name: str, log=True):
     else:
         logging.warning(f'Attempted to cancel an alarm that does not exist: {alarm_name}')
 
+def cancel_notification(notification_name: str, log=True):
+    '''
+    Removes the notification of the specified name
+    '''
+    location = None
+    for (i, notification) in enumerate(notifications):
+        if notification['title'] == notification_name:
+            location = i
+            break
+    if location is not None:
+        del notifications[i]
+        if log:
+            logging.info(f'Canceling an notification: {notification_name}')
+    else:
+        logging.warning(f'Attempted to cancel an notification that does not exist: {notification_name}')
+
+
 def add_alarm_parser():
     '''
     Checks if the current request is a alarm creation request, and if it is, creates the alarm
@@ -157,12 +193,21 @@ def cancel_alarm_parser():
     if alarm_name is not None:
         cancel_alarm(alarm_name)
 
+def cancel_notification_parser():
+    '''
+    Checks if the current request is a cancel notification request, and if it is, it cancels the notification
+    '''
+    notification_name = flask.request.args.get('notif')
+    if notification_name is not None:
+        cancel_notification(notification_name)
+
 @app.route('/')
 @app.route('/index')
 @app.route('/index.html')
 def index():
     add_alarm_parser()
     cancel_alarm_parser()
+    cancel_notification_parser()
     scheduler.run(False)
     return flask.render_template(
         'index.html',
@@ -200,5 +245,6 @@ if __name__ == '__main__':
         print(error)
     with open('config.json') as file:
         config = json.load(file)
+    get_news_notifications() # Starts notifications loop
     logging.basicConfig(filename='log.log', encoding='utf-8', level=logging.DEBUG)
     app.run()
