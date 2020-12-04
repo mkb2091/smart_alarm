@@ -35,6 +35,37 @@ def get_news_briefing(testing=False):
     return 'Found %s articles for keyword %s. %s' % (
         len(articles), config['news_briefing_keyword'], '\n'.join(articles)
         )
+
+def get_weather_briefing():
+    return ''
+
+def get_covid_briefing():
+    if 'covidAPIfilters' not in config:
+        logging.warning('covidAPIfilters is missing from config')
+        return ''
+    cases_and_deaths = {
+        "date": "date",
+        "areaName": "areaName",
+        "areaCode": "areaCode",
+        "newCasesByPublishDate": "newCasesByPublishDate",
+        "cumCasesByPublishDate": "cumCasesByPublishDate",
+        "newDeathsByPublishDate": "newDeathsByPublishDate",
+        "cumDeathsByPublishDate": "cumDeathsByPublishDate"
+    }
+    date = time.strftime('%Y-%m-%d', time.gmtime(time.time() - 86400))
+    api = uk_covid19.Cov19API(filters=config['covidAPIfilters'] + ['date=' + date],
+                              structure=cases_and_deaths)
+    data = api.get_json()['data'][0]
+    return ('Recieved Covid data for %s: %s new cases bring it to a total'
+            ' of %s cumulative cases, and %s new deaths with a total of %s'
+            ' cumulative deaths') % (
+                data['date'],
+                data['newCasesByPublishDate'],
+                data['cumCasesByPublishDate'],
+                data['newDeathsByPublishDate'],
+                data['cumDeathsByPublishDate'])
+
+
 def handle_alarm():
     '''
     Handles what happens when an alarm is triggered. Should be called by the scheduler
@@ -50,6 +81,9 @@ def handle_alarm():
         to_say = 'Alarm %s completed. ' % alarm['title']
         if alarm['include_news']:
             to_say += get_news_briefing()
+        if alarm['include_weather']:
+            to_say += get_weather_briefing()
+        to_say += get_covid_briefing()
         engine.say(to_say)
         engine.runAndWait()
     except IndexError:
