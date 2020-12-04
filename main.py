@@ -1,3 +1,7 @@
+'''
+Smart Alarm
+'''
+
 import logging
 import sched
 import time
@@ -19,24 +23,29 @@ notifications = [{'title':'MyNotification', 'content':'MyNotificationContent'}]
 
 
 def get_news_notifications(reschedule=True):
+    '''
+    Get news notifications based on keyword
+    '''
     for value in ['newsapikey', 'news_notification_keyword']:
         if value not in config:
             logging.warning('%s is missing from config' % value)
-            return ''
+            return
     r = requests.get('http://newsapi.org/v2/everything?q=%s&from=%s&apiKey=%s'
                     % (config['news_notification_keyword'],
                        time.strftime('%Y-%m-%d', time.gmtime(time.time() - 86400)),
                        config['newsapikey']))
     if r.status_code != 200:
         logging.warning('Non 200 status code from NewsAPI: %s' % r.status_code)
-    data = r.json()
     global notifications
-    notifications = data['articles']
+    notifications = r.json()['articles']
     if reschedule:
         scheduler.enter(3600, 1, get_news_notifications)
-    
+
 
 def get_news_briefing(testing=False):
+    '''
+    Gets recent news headlines on the topic in the config file
+    '''
     for value in ['newsapikey', 'news_briefing_keyword']:
         if value not in config:
             logging.warning('%s is missing from config' % value)
@@ -58,6 +67,9 @@ def get_weather_briefing():
     return ''
 
 def get_covid_briefing():
+    '''
+    Get yesterdays Covid-19 stats for the alarm
+    '''
     if 'covidAPIfilters' not in config:
         logging.warning('covidAPIfilters is missing from config')
         return ''
@@ -109,7 +121,8 @@ def handle_alarm():
         logging.warning('Called handle_alarm with an empty alarm list')
 
 
-def register_alarm(alarm_time, name: str, include_news: bool, include_weather: bool, log: bool=True):
+def register_alarm(alarm_time, name: str, include_news: bool,
+                   include_weather: bool, log: bool=True):
     '''
     Creates the alarm
     '''
@@ -133,8 +146,9 @@ def register_alarm(alarm_time, name: str, include_news: bool, include_weather: b
         # but it is easier to append and then sort
         scheduler.enterabs(time.mktime(alarm_time), 1, handle_alarm)
         if log:
-            logging.info(f'Registering an alarm: {name} on {alarm_time_str}, include news: {include_news}, '
-                  f'include weather: {include_weather}')
+            logging.info(f'Registering an alarm: {name} on {alarm_time_str}, '
+                         f'include news: {include_news}, '
+                         f'include weather: {include_weather}')
 
 def cancel_alarm(alarm_name: str, log=True):
     '''
@@ -162,11 +176,12 @@ def cancel_notification(notification_name: str, log=True):
             location = i
             break
     if location is not None:
-        del notifications[i]
+        del notifications[location]
         if log:
             logging.info(f'Canceling an notification: {notification_name}')
     else:
-        logging.warning(f'Attempted to cancel an notification that does not exist: {notification_name}')
+        logging.warning('Attempted to cancel an notification that does not '
+                        f'exist: {notification_name}')
 
 
 def add_alarm_parser():
@@ -187,7 +202,8 @@ def add_alarm_parser():
 
 def cancel_alarm_parser():
     '''
-    Checks if the current request is a cancel alarm request, and if it is, it cancels the alarm
+    Checks if the current request is a cancel alarm request,
+    and if it is, it cancels the alarm
     '''
     alarm_name = flask.request.args.get('alarm_item')
     if alarm_name is not None:
@@ -195,7 +211,8 @@ def cancel_alarm_parser():
 
 def cancel_notification_parser():
     '''
-    Checks if the current request is a cancel notification request, and if it is, it cancels the notification
+    Checks if the current request is a cancel notification request,
+    and if it is, it cancels the notification
     '''
     notification_name = flask.request.args.get('notif')
     if notification_name is not None:
@@ -205,6 +222,9 @@ def cancel_notification_parser():
 @app.route('/index')
 @app.route('/index.html')
 def index():
+    '''
+    Main entry point for the program
+    '''
     add_alarm_parser()
     cancel_alarm_parser()
     cancel_notification_parser()
@@ -217,8 +237,10 @@ def index():
         notifications=notifications
         )
 
-
-if __name__ == '__main__':
+def restore_from_logs():
+    '''
+    Examines the logs to recreate the alarms when the program is reloaded
+    '''
     try:
         with open('log.log') as file:
             for line in file:
@@ -234,17 +256,20 @@ if __name__ == '__main__':
                     include_news = include_news == 'True'
                     include_weather = include_weather == 'True'
                     if alarm_time > time.gmtime():
-                        register_alarm(alarm_time, alarm_name, include_news, include_weather, log=False)
+                        register_alarm(alarm_time, alarm_name, include_news,
+                                       include_weather, log=False)
                 cancel_match = re.match(
                     r'INFO:\w+:Canceling an alarm: (\w+)',
                     line
                     )
                 if cancel_match:
                     cancel_alarm(cancel_match.group(1), log=False)
-    except Exception as error:
+    except FileNotFoundError as error:
         print(error)
-    with open('config.json') as file:
-        config = json.load(file)
+
+if __name__ == '__main__':
+    restore_from_logs()
+    config = json.load(open('config.json'))
     get_news_notifications() # Starts notifications loop
     logging.basicConfig(filename='log.log', encoding='utf-8', level=logging.DEBUG)
     app.run()
